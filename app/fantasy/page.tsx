@@ -14,7 +14,7 @@ import type { League } from "@/lib/types";
 import { usdt, shortAddr } from "@/lib/format";
 
 export default function FantasyPage() {
-  const { connected, address, applyDemoDelta } = useWallet();
+  const { connected, address, applyDemoDelta, sign } = useWallet();
   const [leagues, setLeagues] = useState<League[]>([]);
   const [name, setName] = useState("");
   const [fee, setFee] = useState(50);
@@ -35,11 +35,18 @@ export default function FantasyPage() {
     return true;
   }
 
-  function createLeague(e: React.FormEvent) {
+  async function createLeague(e: React.FormEvent) {
     e.preventDefault();
     if (!requireWallet()) return;
     if (!name.trim()) {
       setMsg("Give your league a name.");
+      return;
+    }
+    // Authorise league creation + entry payment with the user's WDK key.
+    try {
+      await sign(`PitchPass:create-league:${name.trim()}:fee=${fee}`);
+    } catch (e: any) {
+      setMsg(`Cancelled: ${e?.message || "signature rejected"}`);
       return;
     }
     const league: League = {

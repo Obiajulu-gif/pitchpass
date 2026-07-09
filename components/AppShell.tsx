@@ -109,15 +109,15 @@ function WalletButton() {
           {connecting ? "Connecting…" : "Connect Wallet"}
         </button>
         {open && (
-          <div className="panel-glass absolute right-0 mt-2 w-56 p-2">
+          <div className="panel-glass absolute right-0 mt-2 w-64 p-2">
             <button
-              className="btn-ghost w-full text-sm"
+              className="btn-primary w-full text-sm"
               onClick={() => {
-                connect("tronlink");
+                connect("wdk");
                 setOpen(false);
               }}
             >
-              TronLink
+              🔐 Create WDK Wallet
             </button>
             <button
               className="btn-ghost mt-2 w-full text-sm"
@@ -126,10 +126,11 @@ function WalletButton() {
                 setOpen(false);
               }}
             >
-              Demo Wallet
+              Demo Wallet (play money)
             </button>
             <p className="mt-2 px-1 text-[10px] text-slate-400">
-              Self-custodial. Keys never leave your device.
+              WDK generates a 12-word key on your device. Self-custodial — keys
+              never leave your machine.
             </p>
           </div>
         )}

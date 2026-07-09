@@ -1,88 +1,51 @@
-// Wallet helpers. Self-custodial via TronLink (the user holds their keys); a
-// demo wallet is provided as a fallback so the app is usable without an
-// extension. USDT balances are read through our /api/wallet route (TronGrid).
+// Demo-wallet helpers (play-money USDT ledger) used for the in-app game
+// economy. The REAL self-custodial wallet lives in lib/wdkWallet.ts (WDK).
+// The in-app USDT ledger lets entry fees, prize pools and ticket purchases be
+// demonstrated without funding a live account or paying gas.
 
-declare global {
-  interface Window {
-    tronLink?: any;
-    tronWeb?: any;
-  }
-}
+const DEMO_ADDR_KEY = "pitchpass.demoAddr";
+const DEMO_BAL_KEY = "pitchpass.demoBalance";
+const STARTING_BALANCE = 2500;
 
 export interface ConnectResult {
   address: string;
-  provider: "tronlink" | "demo";
-}
-
-export async function connectTronLink(): Promise<ConnectResult> {
-  if (typeof window === "undefined" || !window.tronLink) {
-    throw new Error("TronLink not found");
-  }
-  const res = await window.tronLink.request({ method: "tron_requestAccounts" });
-  // TronLink returns { code: 200 } on success and injects tronWeb
-  const address =
-    window.tronWeb?.defaultAddress?.base58 || res?.base58 || null;
-  if (!address) throw new Error("Could not read TronLink address");
-  return { address, provider: "tronlink" };
+  provider: "demo";
 }
 
 export function connectDemoWallet(): ConnectResult {
-  // A deterministic-looking demo address so the UX is complete without an extension.
   let addr = "";
   if (typeof window !== "undefined") {
-    addr = localStorage.getItem("pitchpass.demoAddr") || "";
+    addr = localStorage.getItem(DEMO_ADDR_KEY) || "";
     if (!addr) {
-      const rnd = Array.from({ length: 33 }, () =>
-        "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789".charAt(
-          Math.floor(Math.random() * 57)
-        )
+      const rnd = Array.from({ length: 39 }, () =>
+        "0123456789abcdef".charAt(Math.floor(Math.random() * 16))
       ).join("");
-      addr = "T" + rnd;
-      localStorage.setItem("pitchpass.demoAddr", addr);
+      addr = "0x" + rnd;
+      localStorage.setItem(DEMO_ADDR_KEY, addr);
     }
   }
   return { address: addr, provider: "demo" };
 }
 
-export async function fetchUsdtBalance(
-  address: string,
-  provider: "tronlink" | "demo"
-): Promise<number> {
-  if (provider === "demo") {
-    // demo wallet starts funded so the flows are demonstrable
-    const key = "pitchpass.demoBalance";
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(key);
-      if (stored) return Number(stored);
-      localStorage.setItem(key, "2500");
-      return 2500;
-    }
-    return 2500;
+export function getDemoBalance(): number {
+  if (typeof window === "undefined") return STARTING_BALANCE;
+  const stored = localStorage.getItem(DEMO_BAL_KEY);
+  if (stored === null) {
+    localStorage.setItem(DEMO_BAL_KEY, String(STARTING_BALANCE));
+    return STARTING_BALANCE;
   }
-  try {
-    const res = await fetch(`/api/wallet/balance?address=${address}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(String(res.status));
-    const data = await res.json();
-    return Number(data.usdt) || 0;
-  } catch {
-    return 0;
-  }
+  return Number(stored);
 }
 
-// Demo-mode spend/receive so prize payouts and ticket purchases visibly move funds.
 export function adjustDemoBalance(delta: number) {
   if (typeof window === "undefined") return;
-  const cur = Number(localStorage.getItem("pitchpass.demoBalance") || "0");
-  localStorage.setItem("pitchpass.demoBalance", String(Math.max(0, cur + delta)));
+  const cur = getDemoBalance();
+  localStorage.setItem(DEMO_BAL_KEY, String(Math.max(0, cur + delta)));
 }
 
-// Placeholder tx hash for the demo settlement ledger.
+// Local settlement-ledger tx hash for the in-app economy.
 export function fakeTxHash(): string {
-  return (
-    Array.from({ length: 64 }, () =>
-      "0123456789abcdef".charAt(Math.floor(Math.random() * 16))
-    ).join("")
-  );
+  return Array.from({ length: 64 }, () =>
+    "0123456789abcdef".charAt(Math.floor(Math.random() * 16))
+  ).join("");
 }

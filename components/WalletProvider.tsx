@@ -8,26 +8,45 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { WalletState } from "@/lib/types";
 import {
   adjustDemoBalance,
   connectDemoWallet,
-  connectTronLink,
-  fetchUsdtBalance,
+  getDemoBalance,
 } from "@/lib/wallet";
+import {
+  forgetWallet,
+  getOnchainBalance,
+  hasStoredWallet,
+  initWallet,
+  signAction,
+} from "@/lib/wdkWallet";
+
+type Provider = "wdk" | "demo" | null;
+
+interface WalletState {
+  connected: boolean;
+  address: string | null;
+  usdtBalance: number; // in-app game ledger (USDT)
+  onchainBalance: number; // real on-chain native balance (WDK)
+  network: string;
+  provider: Provider;
+}
 
 interface WalletContextValue extends WalletState {
   connecting: boolean;
   error: string | null;
-  connect: (mode: "tronlink" | "demo") => Promise<void>;
+  /** Seed shown once, right after a new WDK wallet is created (for backup). */
+  newSeed: string | null;
+  clearNewSeed: () => void;
+  connect: (mode: "wdk" | "demo") => Promise<void>;
   disconnect: () => void;
   refresh: () => Promise<void>;
-  /** demo-mode helper to reflect a spend/receive in the on-screen balance */
   applyDemoDelta: (delta: number) => void;
+  /** Sign an in-app action with the user's WDK key (proves self-custody). */
+  sign: (message: string) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
-
 const STORAGE_KEY = "pitchpass.wallet";
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
@@ -35,115 +54,151 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     connected: false,
     address: null,
     usdtBalance: 0,
-    network: "Tron",
+    onchainBalance: 0,
+    network: "Ethereum",
     provider: null,
   });
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [newSeed, setNewSeed] = useState<string | null>(null);
 
-  const loadBalance = useCallback(
-    async (address: string, provider: "tronlink" | "demo") => {
-      const bal = await fetchUsdtBalance(address, provider);
-      setState((s) => ({ ...s, usdtBalance: bal }));
-    },
-    []
-  );
-
-  const connect = useCallback(
-    async (mode: "tronlink" | "demo") => {
-      setConnecting(true);
-      setError(null);
-      try {
-        const res =
-          mode === "tronlink" ? await connectTronLink() : connectDemoWallet();
-        const next: WalletState = {
+  const connect = useCallback(async (mode: "wdk" | "demo") => {
+    setConnecting(true);
+    setError(null);
+    try {
+      if (mode === "demo") {
+        const res = connectDemoWallet();
+        setState({
           connected: true,
           address: res.address,
-          usdtBalance: 0,
-          network: mode === "demo" ? "Tron (demo)" : "Tron",
-          provider: res.provider,
-        };
-        setState(next);
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({ address: res.address, provider: res.provider })
-        );
-        await loadBalance(res.address, res.provider);
-      } catch (e: any) {
-        setError(
-          mode === "tronlink"
-            ? "TronLink not detected. Install it or use the demo wallet."
-            : e?.message || "Failed to connect"
-        );
-      } finally {
-        setConnecting(false);
+          usdtBalance: getDemoBalance(),
+          onchainBalance: 0,
+          network: "Demo",
+          provider: "demo",
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ provider: "demo" }));
+      } else {
+        // Real WDK self-custodial wallet (seed stays on device).
+        const { address, seedPhrase, isNew } = await initWallet();
+        if (isNew) setNewSeed(seedPhrase);
+        const onchain = await getOnchainBalance();
+        setState({
+          connected: true,
+          address,
+          usdtBalance: getDemoBalance(),
+          onchainBalance: onchain,
+          network: "Ethereum (WDK)",
+          provider: "wdk",
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ provider: "wdk" }));
       }
-    },
-    [loadBalance]
-  );
+    } catch (e: any) {
+      setError(e?.message || "Failed to connect wallet");
+    } finally {
+      setConnecting(false);
+    }
+  }, []);
 
   const disconnect = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
+    // note: we keep the WDK seed in storage so the user can reconnect; use
+    // "forget" on the wallet page to wipe keys.
     setState({
       connected: false,
       address: null,
       usdtBalance: 0,
-      network: "Tron",
+      onchainBalance: 0,
+      network: "Ethereum",
       provider: null,
     });
   }, []);
 
   const refresh = useCallback(async () => {
-    if (state.address && state.provider) {
-      await loadBalance(state.address, state.provider);
+    setState((s) => ({ ...s, usdtBalance: getDemoBalance() }));
+    if (state.provider === "wdk") {
+      const onchain = await getOnchainBalance();
+      setState((s) => ({ ...s, onchainBalance: onchain }));
     }
-  }, [state.address, state.provider, loadBalance]);
+  }, [state.provider]);
 
-  const applyDemoDelta = useCallback(
-    (delta: number) => {
-      if (state.provider === "demo") {
-        adjustDemoBalance(delta);
-        setState((s) => ({
-          ...s,
-          usdtBalance: Math.max(0, s.usdtBalance + delta),
-        }));
+  const applyDemoDelta = useCallback((delta: number) => {
+    adjustDemoBalance(delta);
+    setState((s) => ({ ...s, usdtBalance: Math.max(0, s.usdtBalance + delta) }));
+  }, []);
+
+  const sign = useCallback(
+    async (message: string) => {
+      if (state.provider === "wdk") {
+        return signAction(message);
       }
+      // demo fallback: a deterministic-looking pseudo signature
+      return "0xdemo" + btoa(message).slice(0, 60);
     },
     [state.provider]
   );
 
+  const clearNewSeed = useCallback(() => setNewSeed(null), []);
+
   // reconnect on refresh
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const { address, provider } = JSON.parse(raw);
-      if (address && provider) {
-        setState((s) => ({
-          ...s,
-          connected: true,
-          address,
-          provider,
-          network: provider === "demo" ? "Tron (demo)" : "Tron",
-        }));
-        loadBalance(address, provider);
+    (async () => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const { provider } = JSON.parse(raw) as { provider: Provider };
+        if (provider === "demo") {
+          const res = connectDemoWallet();
+          setState({
+            connected: true,
+            address: res.address,
+            usdtBalance: getDemoBalance(),
+            onchainBalance: 0,
+            network: "Demo",
+            provider: "demo",
+          });
+        } else if (provider === "wdk" && hasStoredWallet()) {
+          const { address } = await initWallet();
+          const onchain = await getOnchainBalance();
+          setState({
+            connected: true,
+            address,
+            usdtBalance: getDemoBalance(),
+            onchainBalance: onchain,
+            network: "Ethereum (WDK)",
+            provider: "wdk",
+          });
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
-    }
-  }, [loadBalance]);
+    })();
+  }, []);
 
   const value = useMemo<WalletContextValue>(
     () => ({
       ...state,
       connecting,
       error,
+      newSeed,
+      clearNewSeed,
       connect,
       disconnect,
       refresh,
       applyDemoDelta,
+      sign,
     }),
-    [state, connecting, error, connect, disconnect, refresh, applyDemoDelta]
+    [
+      state,
+      connecting,
+      error,
+      newSeed,
+      clearNewSeed,
+      connect,
+      disconnect,
+      refresh,
+      applyDemoDelta,
+      sign,
+    ]
   );
 
   return (

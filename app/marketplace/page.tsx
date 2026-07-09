@@ -14,7 +14,7 @@ import { fakeTxHash } from "@/lib/wallet";
 import { usdt, shortAddr } from "@/lib/format";
 
 export default function MarketplacePage() {
-  const { connected, address, usdtBalance, applyDemoDelta } = useWallet();
+  const { connected, address, usdtBalance, applyDemoDelta, sign } = useWallet();
   const [tickets, setTickets] = useState<TicketListing[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -96,18 +96,32 @@ export default function MarketplacePage() {
       return;
     }
     setBusyId(t.id);
-    // Atomic-style flow: charge, confirm, then transfer ownership.
-    await new Promise((r) => setTimeout(r, 900)); // simulate tx confirmation
-    applyDemoDelta(-t.priceUSDT);
-    const updated: TicketListing = {
-      ...t,
-      status: "sold",
-      buyerAddress: address!,
-      txHash: fakeTxHash(),
-    };
-    upsertTicket(updated);
-    setBusyId(null);
-    setMsg(`Purchased! Ticket ownership transferred. tx ${updated.txHash!.slice(0, 10)}…`);
+    try {
+      // 1. Authorise the purchase with the user's WDK key (self-custody proof).
+      const signature = await sign(
+        `PitchPass:buy-ticket:${t.id}:price=${t.priceUSDT}:buyer=${address}`
+      );
+      // 2. Atomic-style flow: charge, confirm, then transfer ownership.
+      await new Promise((r) => setTimeout(r, 700));
+      applyDemoDelta(-t.priceUSDT);
+      const updated: TicketListing = {
+        ...t,
+        status: "sold",
+        buyerAddress: address!,
+        txHash: fakeTxHash(),
+      };
+      upsertTicket(updated);
+      setMsg(
+        `Purchased! Ownership transferred. Signed by your key ${signature.slice(
+          0,
+          14
+        )}… · tx ${updated.txHash!.slice(0, 10)}…`
+      );
+    } catch (e: any) {
+      setMsg(`Purchase cancelled: ${e?.message || "signature rejected"}`);
+    } finally {
+      setBusyId(null);
+    }
   }
 
   const listed = tickets.filter((t) => t.status === "listed");

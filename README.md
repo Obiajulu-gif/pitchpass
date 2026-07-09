@@ -7,7 +7,10 @@ Built for the **Tether Developers Cup**. PitchPass is one app with two integrate
 1. **Fantasy Leagues** — Create or join a league, draft a squad within a budget from real fixtures, score points, and the winner automatically takes the USDT prize pool.
 2. **Ticket Marketplace** — List spare matchday tickets or buy one. Payment is in USDT and ticket ownership transfers only once the payment confirms.
 
-Wallets are **self-custodial** (your keys stay on your device) via **TronLink**, with a **demo wallet** so anyone can try the full flow instantly. Live football data comes from **Football-Data.org**, and real USDT (TRC-20) balances are read from **TronGrid**.
+Wallets are **self-custodial via Tether's [WDK](https://wdk.tether.io) (`@tetherto/wdk`)** — a 12-word key is generated **on the user's device**, stored only in their browser, and **every in-app action is signed with their private key**. A **demo wallet** lets anyone try the full flow with play money. Live football data comes from **Football-Data.org**.
+
+> ### 🏆 Track: **WDK (Wallets)**
+> This project uses the **real WDK SDK** running **client-side in the browser** for wallet creation, EVM account derivation, on-chain balance reads, and message/transaction signing. Keys never touch a server. See [`lib/wdkWallet.ts`](./lib/wdkWallet.ts) and the signing calls in the fantasy and marketplace flows.
 
 > **Design:** a "futuristic skeuomorphism" UI — tactile glass/metal panels, embossed press-down buttons, holographic ticket stubs, and trading-card player tiles, in a neon Tether-green palette.
 
@@ -28,20 +31,29 @@ Wallets are **self-custodial** (your keys stay on your device) via **TronLink**,
 
 - **Next.js 14** (App Router) + **React 18** + **TypeScript**
 - **Tailwind CSS** custom skeuomorphic design system
+- **WDK** (`@tetherto/wdk`, `@tetherto/wdk-wallet-evm`) — self-custodial wallet, **bundled to run in the browser** (a small `sodium-universal` shim in [`shims/`](./shims) supplies `sodium_memzero` so WDK's EVM signer runs client-side)
 - **Server routes** proxy external APIs so keys never reach the browser
 - **localStorage** persistence layer (swappable for a DB / Vercel KV to make state multi-user)
+
+## 🔐 How WDK is used (self-custody)
+
+1. **Create** — `WDK.getRandomSeedPhrase()` generates a 12-word BIP39 mnemonic in the browser; it is stored only in `localStorage` and shown once for backup.
+2. **Derive** — `new WDK(seed).registerWallet("ethereum", WalletManagerEvm, …)` derives a real EVM account and address.
+3. **Read** — `account.getBalance()` reads the on-chain native balance via a public RPC.
+4. **Sign** — `account.sign(...)` signs each action (creating a league, buying a ticket) with the user's key, proving self-custody. Keys never leave the device.
 
 ---
 
 ## 🔌 APIs used & where to get them
 
-| API | Purpose | Get a key |
+| Service | Purpose | Key needed? |
 |-----|---------|-----------|
+| [WDK](https://wdk.tether.io) (`@tetherto/wdk`) | Self-custodial wallet, signing | **No key** — runs on device |
 | [Football-Data.org](https://www.football-data.org/client/register) | Fixtures & competitions | Free registration |
 | [TheSportsDB](https://www.thesportsdb.com/api.php) | Backup sports data | Public test key `123` |
-| [TronGrid](https://www.trongrid.io) | USDT (TRC-20) balance reads | Free API key |
+| Public EVM RPC (`eth.drpc.org`) | On-chain balance reads via WDK | No key (override with `NEXT_PUBLIC_EVM_RPC`) |
 
-All keys live in `.env.local` (git-ignored) and are read **server-side only**.
+API keys live in `.env.local` (git-ignored) and are read **server-side only**. The WDK wallet needs **no keys and no server** — it is fully self-custodial in the browser.
 
 ---
 
@@ -75,12 +87,13 @@ USDT_TRC20_CONTRACT=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
 
 ## 🕹️ How to demo
 
-1. Click **Connect Wallet → Demo Wallet** (starts funded with 2,500 USDT).
-2. **Fantasy:** create a league (pays the entry fee), open it, draft 5 players within budget, **Save & Score**, then **Settle Pool** to pay the winner.
-3. **Tickets:** browse seeded listings, **Buy** one (USDT is debited, ownership transfers), or **List a Ticket** of your own.
-4. **Wallet:** watch the balance and activity ledger update across both products.
+1. Click **Connect Wallet → 🔐 Create WDK Wallet**. A real 12-word key is generated **in your browser**; back it up when prompted. (Or use the **Demo Wallet** for play money.)
+2. On the **Wallet** page, hit **Sign a proof message** to see WDK sign with your private key locally.
+3. **Fantasy:** create a league — you'll **sign the action with your key** — then open it, draft 5 players within budget, **Save & Score**, and **Settle Pool** to pay the winner.
+4. **Tickets:** browse seeded listings and **Buy** one — the purchase is **signed by your WDK key** before ownership transfers — or **List a Ticket** of your own.
+5. **Wallet:** watch the in-app USDT ledger and activity update across both products.
 
-To use **real** data: add a Football-Data.org key (live fixtures) and connect **TronLink** (real on-chain USDT balance via TronGrid).
+To use **real** fixtures: add a Football-Data.org key. The WDK wallet is real out of the box (no key required).
 
 ---
 
