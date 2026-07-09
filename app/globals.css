@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-midnight-800 text-slate-100 font-sans antialiased;
+  background-image:
+    radial-gradient(900px circle at 12% -10%, rgba(38, 161, 123, 0.14), transparent 45%),
+    radial-gradient(800px circle at 100% 0%, rgba(123, 47, 247, 0.12), transparent 45%),
+    radial-gradient(700px circle at 50% 120%, rgba(0, 229, 255, 0.08), transparent 45%),
+    linear-gradient(180deg, #0A0E1A 0%, #05070F 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* ---------- Skeuomorphic component layer ---------- */
+@layer components {
+  /* Glass / metal panel with real depth */
+  .panel {
+    @apply relative rounded-2xl border border-white/10 bg-metal shadow-skeu;
+  }
+  .panel-glass {
+    @apply relative rounded-2xl border border-white/10 bg-glass shadow-skeu backdrop-blur-xl;
+  }
+
+  /* Pressable, embossed button */
+  .btn {
+    @apply relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5
+      font-semibold tracking-wide transition-all duration-150 select-none
+      border border-white/10 shadow-skeu active:shadow-skeu-pressed active:translate-y-px;
+  }
+  .btn-primary {
+    @apply btn text-midnight-900 bg-gradient-to-b from-tether-light to-tether-dark
+      hover:shadow-glow-tether;
+  }
+  .btn-cyan {
+    @apply btn text-midnight-900 bg-gradient-to-b from-cyanglow to-[#0093a8]
+      hover:shadow-glow-cyan;
+  }
+  .btn-ghost {
+    @apply btn bg-white/5 text-slate-100 hover:bg-white/10;
+  }
+  .btn-gold {
+    @apply btn text-midnight-900 bg-gradient-to-b from-gold to-[#b89600]
+      hover:shadow-glow-gold;
+  }
+
+  /* Inset "readout" field, like a device screen */
+  .readout {
+    @apply rounded-xl bg-midnight-900 border border-white/5
+      shadow-[inset_0_2px_10px_rgba(0,0,0,0.7)] px-4 py-3;
+  }
+
+  .stat-chip {
+    @apply rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm shadow-skeu;
+  }
+
+  .label-eyebrow {
+    @apply text-[11px] uppercase tracking-[0.2em] text-slate-400 font-semibold;
+  }
+
+  /* Holographic foil sheen sweep (for tickets / cards) */
+  .foil::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 rounded-[inherit] overflow-hidden;
+    background: linear-gradient(
+      100deg,
+      transparent 20%,
+      rgba(255, 255, 255, 0.18) 45%,
+      rgba(0, 229, 255, 0.12) 50%,
+      transparent 60%
+    );
+    transform: translateX(-120%) skewX(-20deg);
+    animation: sheen 3.5s ease-in-out infinite;
+  }
+}
+
+@layer utilities {
+  .text-glow-tether {
+    text-shadow: 0 0 18px rgba(38, 161, 123, 0.55);
+  }
+  .text-glow-cyan {
+    text-shadow: 0 0 18px rgba(0, 229, 255, 0.5);
+  }
+  .turf-lines {
+    background-image: repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.02) 0px,
+      rgba(255, 255, 255, 0.02) 2px,
+      transparent 2px,
+      transparent 26px
+    );
+  }
+  /* Perforation edge for ticket stubs */
+  .perforate {
+    -webkit-mask-image: radial-gradient(circle 7px at left center, transparent 6px, black 7px);
+    mask-image: radial-gradient(circle 7px at left center, transparent 6px, black 7px);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
